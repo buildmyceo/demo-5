@@ -142,6 +142,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [detailTab, setDetailTab] = useState<'menu' | 'reviews' | 'offers'>('menu');
   const [orderConfirmed, setOrderConfirmed] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>('placed');
   const [driverLocation, setDriverLocation] = useState<[number, number]>([25.5941, 85.1376]); // Patna coordinates
   const [eta, setEta] = useState(25);
@@ -224,22 +225,23 @@ export default function App() {
 
   // Components
   const Navbar = () => (
-    <nav className="sticky top-0 z-50 glass-morphism border-b border-slate-100 px-4 md:px-8 py-4 flex items-center justify-between">
-      <div className="flex items-center gap-8">
+    <nav className="sticky top-0 z-50 glass-morphism border-b border-slate-100 px-4 md:px-8 py-4 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-4 md:gap-8">
         <h1 
-          className="text-2xl font-bold text-primary cursor-pointer" 
+          className="text-xl md:text-2xl font-black text-primary cursor-pointer tracking-tighter" 
           onClick={() => setCurrentPage('home')}
         >
-          QuickBite
+          QUICKBITE
         </h1>
-        <div className="hidden md:flex items-center gap-2 text-slate-500 text-sm font-medium bg-slate-50 px-3 py-2 rounded-full border border-slate-100">
-          <MapPin size={16} className="text-primary" />
-          <span>Patna, Bihar</span>
-          <ChevronRight size={14} />
+        <div className="hidden sm:flex items-center gap-2 text-slate-500 text-xs md:text-sm font-medium bg-slate-50 px-3 py-1.5 md:py-2 rounded-full border border-slate-100">
+          <MapPin size={14} className="text-primary md:w-4 md:h-4" />
+          <span className="truncate max-w-[80px] md:max-w-none">Patna, Bihar</span>
+          <ChevronRight size={12} />
         </div>
       </div>
 
-      <div className="flex-1 max-w-xl mx-8 hidden md:block relative group">
+      {/* Desktop Search */}
+      <div className="flex-1 max-w-xl mx-4 hidden md:block relative group">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
@@ -269,22 +271,17 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Recent Searches</p>
-              <div className="space-y-2">
-                {['Spicy Biryani House', 'The Caffeine Hub'].map(item => (
-                  <div key={item} className="flex items-center gap-3 text-sm text-slate-600 hover:text-primary cursor-pointer">
-                    <Clock size={14} className="text-slate-300" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-4">
+        <button 
+          onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+          className="p-2 md:hidden hover:bg-slate-100 rounded-full transition-colors"
+        >
+          <Search size={22} className="text-slate-700" />
+        </button>
         <button 
           onClick={() => navigateTo('listing')}
           className="hidden lg:flex items-center gap-2 text-slate-600 hover:text-primary transition-all font-bold text-sm bg-amber-400/10 px-4 py-2 rounded-full border border-amber-400/20 group"
@@ -298,7 +295,7 @@ export default function App() {
         >
           <ShoppingBag size={24} className="text-slate-700" />
           {cartCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
+            <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
               {cartCount}
             </span>
           )}
@@ -311,6 +308,36 @@ export default function App() {
           <span className="hidden sm:inline">Sign In</span>
         </button>
       </div>
+
+      {/* Mobile Search Overlay */}
+      <AnimatePresence>
+        {isMobileSearchOpen && (
+          <motion.div 
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            className="absolute top-full left-0 right-0 bg-white border-b border-slate-100 p-4 md:hidden z-[60] shadow-xl"
+          >
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                autoFocus
+                type="text" 
+                placeholder="Search for food..." 
+                className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pl-10 pr-4 focus:outline-none"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setIsMobileSearchOpen(false);
+                    navigateTo('listing');
+                  }
+                }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </nav>
   );
 
@@ -425,7 +452,7 @@ export default function App() {
   const HomeView = () => (
     <div className="space-y-12 pb-20">
       {/* Hero Section */}
-      <section className="relative h-[500px] flex items-center px-4 md:px-8 overflow-hidden rounded-b-[40px]">
+      <section className="relative h-[400px] md:h-[500px] flex items-center px-4 md:px-8 overflow-hidden rounded-b-[40px]">
         <div className="absolute inset-0 z-0">
           <img 
             src="https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=2000&auto=format&fit=crop" 
@@ -433,12 +460,12 @@ export default function App() {
             className="w-full h-full object-cover brightness-[0.4]"
           />
         </div>
-        <div className="relative z-10 max-w-4xl space-y-8">
+        <div className="relative z-10 max-w-4xl space-y-6 md:space-y-8">
           <div className="space-y-4">
             <motion.h2 
               initial={{ y: 30, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              className="text-5xl md:text-8xl font-black text-white leading-[0.9] tracking-tighter"
+              className="text-4xl sm:text-5xl md:text-8xl font-black text-white leading-[0.9] tracking-tighter"
             >
               CRAVE IT.<br />GET IT <span className="text-primary italic">FAST.</span>
             </motion.h2>
@@ -446,36 +473,11 @@ export default function App() {
               initial={{ y: 30, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="text-xl text-slate-200 max-w-xl font-medium"
+              className="text-base md:text-xl text-slate-200 max-w-xl font-medium"
             >
               The best restaurants in Patna, delivered to your doorstep.
             </motion.p>
           </div>
-
-          <motion.div 
-            initial={{ y: 30, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="bg-white p-2 rounded-[24px] shadow-2xl flex flex-col md:flex-row items-center gap-2 max-w-2xl"
-          >
-            <div className="flex-1 flex items-center gap-3 px-4 w-full">
-              <Search className="text-slate-400" size={24} />
-              <input 
-                type="text" 
-                placeholder="Search for restaurants, cuisines, or dishes..." 
-                className="w-full py-4 text-slate-900 focus:outline-none font-medium"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && setCurrentPage('listing')}
-              />
-            </div>
-            <button 
-              onClick={() => setCurrentPage('listing')}
-              className="w-full md:w-auto bg-primary text-white px-8 py-4 rounded-[18px] font-bold text-lg hover:bg-primary-dark transition-all"
-            >
-              Search
-            </button>
-          </motion.div>
 
           <motion.div 
             initial={{ opacity: 0 }}
@@ -737,33 +739,33 @@ export default function App() {
         </div>
 
         {/* Tabs */}
-        <div className="px-4 md:px-8 border-b border-slate-100 flex items-center gap-12 mb-8">
+        <div className="px-4 md:px-8 border-b border-slate-100 flex items-center justify-between md:justify-start md:gap-12 mb-8 overflow-x-auto no-scrollbar">
           <button 
             onClick={() => setActiveTab('delivery')}
-            className={`flex items-center gap-3 py-4 border-b-2 transition-all font-medium ${activeTab === 'delivery' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}
+            className={`flex items-center gap-2 md:gap-3 py-4 border-b-2 transition-all font-medium whitespace-nowrap ${activeTab === 'delivery' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}
           >
-            <div className={`p-2 rounded-full ${activeTab === 'delivery' ? 'bg-primary/10' : 'bg-slate-100'}`}>
-              <Truck size={20} />
+            <div className={`p-1.5 md:p-2 rounded-full ${activeTab === 'delivery' ? 'bg-primary/10' : 'bg-slate-100'}`}>
+              <Truck size={18} className="md:w-5 md:h-5" />
             </div>
-            <span className="text-lg">Delivery</span>
+            <span className="text-base md:text-lg">Delivery</span>
           </button>
           <button 
             onClick={() => setActiveTab('dining')}
-            className={`flex items-center gap-3 py-4 border-b-2 transition-all font-medium ${activeTab === 'dining' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}
+            className={`flex items-center gap-2 md:gap-3 py-4 border-b-2 transition-all font-medium whitespace-nowrap ${activeTab === 'dining' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}
           >
-            <div className={`p-2 rounded-full ${activeTab === 'dining' ? 'bg-primary/10' : 'bg-slate-100'}`}>
-              <ShoppingBag size={20} />
+            <div className={`p-1.5 md:p-2 rounded-full ${activeTab === 'dining' ? 'bg-primary/10' : 'bg-slate-100'}`}>
+              <ShoppingBag size={18} className="md:w-5 md:h-5" />
             </div>
-            <span className="text-lg">Dining Out</span>
+            <span className="text-base md:text-lg">Dining Out</span>
           </button>
           <button 
             onClick={() => setActiveTab('nightlife')}
-            className={`flex items-center gap-3 py-4 border-b-2 transition-all font-medium ${activeTab === 'nightlife' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}
+            className={`flex items-center gap-2 md:gap-3 py-4 border-b-2 transition-all font-medium whitespace-nowrap ${activeTab === 'nightlife' ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}
           >
-            <div className={`p-2 rounded-full ${activeTab === 'nightlife' ? 'bg-primary/10' : 'bg-slate-100'}`}>
-              <User size={20} />
+            <div className={`p-1.5 md:p-2 rounded-full ${activeTab === 'nightlife' ? 'bg-primary/10' : 'bg-slate-100'}`}>
+              <User size={18} className="md:w-5 md:h-5" />
             </div>
-            <span className="text-lg">Nightlife</span>
+            <span className="text-base md:text-lg">Nightlife</span>
           </button>
         </div>
 
@@ -802,15 +804,15 @@ export default function App() {
         </div>
 
         {/* Inspiration Section */}
-        <section className="px-4 md:px-8 mb-12 bg-slate-50 py-12">
-          <h3 className="text-2xl font-bold mb-8">Inspiration for your first order</h3>
-          <div className="flex gap-8 overflow-x-auto no-scrollbar">
+        <section className="px-4 md:px-8 mb-12 bg-slate-50 py-8 md:py-12">
+          <h3 className="text-xl md:text-2xl font-bold mb-6 md:mb-8">Inspiration for your first order</h3>
+          <div className="flex gap-4 md:gap-8 overflow-x-auto no-scrollbar">
             {INSPIRATION_CATEGORIES.map((item) => (
               <div key={item.name} className="flex-shrink-0 text-center cursor-pointer group">
-                <div className="w-36 h-36 rounded-full overflow-hidden mb-3 shadow-md group-hover:shadow-xl transition-all">
+                <div className="w-24 h-24 md:w-36 md:h-36 rounded-full overflow-hidden mb-3 shadow-md group-hover:shadow-xl transition-all">
                   <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                 </div>
-                <p className="font-medium text-slate-700">{item.name}</p>
+                <p className="text-sm md:text-base font-medium text-slate-700">{item.name}</p>
               </div>
             ))}
           </div>
@@ -940,7 +942,7 @@ export default function App() {
         </div>
 
         {/* Tabs */}
-        <div className="max-w-5xl mx-auto px-4 md:px-8 border-b border-slate-100 flex items-center gap-8 mb-8">
+        <div className="max-w-5xl mx-auto px-4 md:px-8 border-b border-slate-100 flex items-center gap-6 md:gap-8 mb-8 overflow-x-auto no-scrollbar">
           {[
             { id: 'menu', label: 'Order Online', icon: <ShoppingBag size={18} /> },
             { id: 'reviews', label: 'Reviews', icon: <MessageSquare size={18} /> },
@@ -950,10 +952,10 @@ export default function App() {
             <button 
               key={tab.id}
               onClick={() => setDetailTab(tab.id as any)}
-              className={`flex items-center gap-2 py-4 border-b-2 transition-all font-medium ${detailTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}
+              className={`flex items-center gap-2 py-4 border-b-2 transition-all font-medium whitespace-nowrap ${detailTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-slate-500'}`}
             >
               {tab.icon}
-              <span>{tab.label}</span>
+              <span className="text-sm md:text-base">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -1005,11 +1007,11 @@ export default function App() {
                               <p className="text-slate-900 font-bold">₹{item.price}</p>
                               <p className="text-slate-500 text-sm leading-relaxed">{item.description}</p>
                             </div>
-                            <div className="relative w-32 h-32 flex-shrink-0">
+                            <div className="relative w-24 h-24 md:w-32 md:h-32 flex-shrink-0">
                               <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded-2xl shadow-md" />
                               <button 
                                 onClick={() => addToCart(item, selectedRestaurant.id)}
-                                className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white text-primary border border-slate-200 px-6 py-1.5 rounded-lg font-bold text-sm shadow-lg hover:bg-slate-50 transition-all active:scale-95"
+                                className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white text-primary border border-slate-200 px-4 md:px-6 py-1.5 rounded-lg font-bold text-xs md:text-sm shadow-lg hover:bg-slate-50 transition-all active:scale-95"
                               >
                                 ADD
                               </button>
@@ -1298,11 +1300,11 @@ export default function App() {
         </button>
 
         {/* Tracking Info Overlay */}
-        <div className="absolute bottom-10 left-4 right-4 md:left-10 md:right-auto md:w-[400px] z-10 space-y-4">
+        <div className="absolute bottom-6 left-4 right-4 md:bottom-10 md:left-10 md:right-auto md:w-[400px] z-10 space-y-4">
           <motion.div 
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="bg-white rounded-[40px] shadow-2xl border border-slate-100 p-8 space-y-6"
+            className="bg-white rounded-[32px] md:rounded-[40px] shadow-2xl border border-slate-100 p-6 md:p-8 space-y-6"
           >
             <div className="flex items-center justify-between">
               <div>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://quickbite.run.app/sitemap.xml
