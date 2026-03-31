@@ -25,7 +25,7 @@ export interface FoodItem {
   price: number;
   image: string;
   description: string;
-  category: 'Starters' | 'Main Course' | 'Desserts';
+  category: 'Starters' | 'Main Course' | 'Desserts' | 'Beverages' | 'Snacks' | 'Cakes';
   isVeg: boolean;
 }
 
@@ -34,6 +34,16 @@ export interface CartItem extends FoodItem {
   restaurantId: string;
 }
 
-export type Page = 'home' | 'listing' | 'detail' | 'cart' | 'checkout' | 'auth' | 'order-confirmed' | 'tracking';
+export interface Order {
+  id: string;
+  restaurantName: string;
+  restaurantImage: string;
+  items: CartItem[];
+  total: number;
+  date: string;
+  status: TrackingStatus;
+}
+
+export type Page = 'home' | 'listing' | 'detail' | 'cart' | 'checkout' | 'auth' | 'order-confirmed' | 'tracking' | 'orders';
 
 export type TrackingStatus = 'placed' | 'preparing' | 'picked-up' | 'near-you' | 'delivered';

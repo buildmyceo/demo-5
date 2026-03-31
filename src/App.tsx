@@ -40,7 +40,7 @@ import {
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Page, Restaurant, FoodItem, CartItem, Review, TrackingStatus } from './types';
+import { Page, Restaurant, FoodItem, CartItem, Review, TrackingStatus, Order } from './types';
 import { RESTAURANTS, MENU_ITEMS, CATEGORIES, INSPIRATION_CATEGORIES, REVIEWS } from './constants';
 
 // Fix for Leaflet default icon issues in Vite
@@ -87,6 +87,7 @@ const RestaurantCard = ({ restaurant, onClick }: { restaurant: Restaurant, onCli
         src={restaurant.image} 
         alt={restaurant.name} 
         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+        referrerPolicy="no-referrer"
       />
       <div className="absolute top-4 left-4 flex gap-2">
         <div className="bg-white/90 backdrop-blur-sm px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider text-slate-900 shadow-sm">
@@ -146,6 +147,34 @@ export default function App() {
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>('placed');
   const [driverLocation, setDriverLocation] = useState<[number, number]>([25.5941, 85.1376]); // Patna coordinates
   const [eta, setEta] = useState(25);
+  const [reviewsState, setReviewsState] = useState<Record<string, Review[]>>(REVIEWS);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [newReview, setNewReview] = useState({ rating: 5, comment: '' });
+  const [orders, setOrders] = useState<Order[]>([
+    {
+      id: 'ORD123456',
+      restaurantName: 'Spicy Biryani House',
+      restaurantImage: 'https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=800&auto=format&fit=crop',
+      items: [
+        { id: 'b1', name: 'Chicken Dum Biryani', price: 299, quantity: 2, restaurantId: '1', image: '', description: '', category: 'Main Course', isVeg: false },
+        { id: 'b3', name: 'Chicken 65', price: 199, quantity: 1, restaurantId: '1', image: '', description: '', category: 'Starters', isVeg: false }
+      ],
+      total: 862,
+      date: '28 Mar, 2026',
+      status: 'delivered'
+    },
+    {
+      id: 'ORD789012',
+      restaurantName: 'Pizza Corner',
+      restaurantImage: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=800&auto=format&fit=crop',
+      items: [
+        { id: 'p1', name: 'Margherita Pizza', price: 249, quantity: 1, restaurantId: '2', image: '', description: '', category: 'Main Course', isVeg: true }
+      ],
+      total: 314,
+      date: '25 Mar, 2026',
+      status: 'delivered'
+    }
+  ]);
 
   // Cart Logic
   const addToCart = (item: FoodItem, restaurantId: string) => {
@@ -165,12 +194,38 @@ export default function App() {
     setCart(prev => prev.map(i => i.id === id ? { ...i, quantity: Math.max(0, i.quantity - 1) } : i).filter(i => i.quantity > 0));
   };
 
+  const handleAddReview = () => {
+    if (!selectedRestaurant || !newReview.comment.trim()) return;
+    
+    const review: Review = {
+      id: `r${Date.now()}`,
+      userName: 'You',
+      userImage: 'https://picsum.photos/seed/user/100/100',
+      rating: newReview.rating,
+      comment: newReview.comment,
+      date: 'Just now'
+    };
+
+    setReviewsState(prev => ({
+      ...prev,
+      [selectedRestaurant.id]: [review, ...(prev[selectedRestaurant.id] || [])]
+    }));
+
+    setIsReviewModalOpen(false);
+    setNewReview({ rating: 5, comment: '' });
+    setToastMessage('Review submitted successfully!');
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
+  };
+
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
 
   // Navigation
   useEffect(() => {
     if (currentPage === 'tracking') {
+      setTrackingStatus('placed');
+      setEta(25);
       const interval = setInterval(() => {
         setDriverLocation(prev => {
           const target: [number, number] = [25.6126, 85.1588]; // Destination
@@ -178,10 +233,16 @@ export default function App() {
           const newLat = prev[0] + (target[0] > prev[0] ? step : -step);
           const newLng = prev[1] + (target[1] > prev[1] ? step : -step);
           
-          // Update status based on proximity
+          // Update status based on proximity and time
           const dist = Math.sqrt(Math.pow(target[0] - newLat, 2) + Math.pow(target[1] - newLng, 2));
-          if (dist < 0.005) setTrackingStatus('near-you');
-          if (dist < 0.001) setTrackingStatus('delivered');
+          
+          setTrackingStatus(current => {
+            if (dist < 0.001) return 'delivered';
+            if (dist < 0.005) return 'near-you';
+            if (dist < 0.015) return 'picked-up';
+            if (dist < 0.025) return 'preparing';
+            return current;
+          });
           
           return [newLat, newLng];
         });
@@ -224,122 +285,202 @@ export default function App() {
   };
 
   // Components
-  const Navbar = () => (
-    <nav className="sticky top-0 z-50 glass-morphism border-b border-slate-100 px-4 md:px-8 py-4 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-4 md:gap-8">
-        <h1 
-          className="text-xl md:text-2xl font-black text-primary cursor-pointer tracking-tighter" 
-          onClick={() => setCurrentPage('home')}
-        >
-          QUICKBITE
-        </h1>
-        <div className="hidden sm:flex items-center gap-2 text-slate-500 text-xs md:text-sm font-medium bg-slate-50 px-3 py-1.5 md:py-2 rounded-full border border-slate-100">
-          <MapPin size={14} className="text-primary md:w-4 md:h-4" />
-          <span className="truncate max-w-[80px] md:max-w-none">Patna, Bihar</span>
-          <ChevronRight size={12} />
-        </div>
-      </div>
+  const Navbar = () => {
+    const suggestions = useMemo(() => {
+      if (!searchQuery.trim()) return [];
+      
+      const query = searchQuery.toLowerCase();
+      const restaurantMatches = RESTAURANTS.filter(r => 
+        r.name.toLowerCase().includes(query) || 
+        r.categories.some(c => c.toLowerCase().includes(query))
+      ).map(r => ({ type: 'restaurant', label: r.name, data: r }));
 
-      {/* Desktop Search */}
-      <div className="flex-1 max-w-xl mx-4 hidden md:block relative group">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input 
-            type="text" 
-            placeholder="Search for restaurants or dishes..." 
-            className="w-full bg-slate-50 border border-slate-100 rounded-xl py-2.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => currentPage !== 'listing' && setCurrentPage('listing')}
-          />
+      const dishMatches = Object.values(MENU_ITEMS).flat().filter(item => 
+        item.name.toLowerCase().includes(query)
+      ).map(item => ({ type: 'dish', label: item.name, data: item }));
+
+      return [...restaurantMatches, ...dishMatches].slice(0, 8);
+    }, [searchQuery]);
+
+    const handleSuggestionClick = (suggestion: any) => {
+      if (suggestion.type === 'restaurant') {
+        setSelectedRestaurant(suggestion.data);
+        navigateTo('detail');
+      } else {
+        setSearchQuery(suggestion.label);
+        navigateTo('listing');
+      }
+      setIsMobileSearchOpen(false);
+    };
+
+    return (
+      <nav className="sticky top-0 z-50 glass-morphism border-b border-slate-100 px-4 md:px-8 py-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4 md:gap-8">
+          <h1 
+            className="text-xl md:text-2xl font-black text-primary cursor-pointer tracking-tighter" 
+            onClick={() => setCurrentPage('home')}
+          >
+            QUICKBITE
+          </h1>
+          <div className="hidden sm:flex items-center gap-2 text-slate-500 text-xs md:text-sm font-medium bg-slate-50 px-3 py-1.5 md:py-2 rounded-full border border-slate-100">
+            <MapPin size={14} className="text-primary md:w-4 md:h-4" />
+            <span className="truncate max-w-[80px] md:max-w-none">Patna, Bihar</span>
+            <ChevronRight size={12} />
+          </div>
         </div>
-        
-        {/* Search Suggestions Mock */}
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 p-4 opacity-0 invisible group-focus-within:opacity-100 group-focus-within:visible transition-all z-50">
-          <div className="space-y-4">
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Trending Searches</p>
-              <div className="flex flex-wrap gap-2">
-                {['Biryani', 'Pizza', 'Burgers', 'Dosa', 'Thali'].map(tag => (
-                  <button 
-                    key={tag}
-                    onClick={() => setSearchQuery(tag)}
-                    className="px-3 py-1.5 bg-slate-50 rounded-lg text-xs font-bold text-slate-600 hover:bg-primary/10 hover:text-primary transition-all"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
+
+        {/* Desktop Search */}
+        <div className="flex-1 max-w-xl mx-4 hidden md:block relative group">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search for restaurants or dishes..." 
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl py-2.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => currentPage !== 'listing' && setCurrentPage('listing')}
+            />
+          </div>
+          
+          {/* Search Suggestions */}
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 p-4 opacity-0 invisible group-focus-within:opacity-100 group-focus-within:visible transition-all z-50">
+            <div className="space-y-4">
+              {suggestions.length > 0 ? (
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Suggestions</p>
+                  <div className="space-y-1">
+                    {suggestions.map((suggestion, idx) => (
+                      <button 
+                        key={idx}
+                        onClick={() => handleSuggestionClick(suggestion)}
+                        className="w-full flex items-center gap-3 p-2 hover:bg-slate-50 rounded-xl transition-all group/item"
+                      >
+                        <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400 group-hover/item:bg-primary/10 group-hover/item:text-primary transition-colors">
+                          {suggestion.type === 'restaurant' ? <ShoppingBag size={14} /> : <Search size={14} />}
+                        </div>
+                        <div className="text-left">
+                          <p className="text-sm font-bold text-slate-900">{suggestion.label}</p>
+                          <p className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">{suggestion.type}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Trending Searches</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['Biryani', 'Pizza', 'Burgers', 'Dosa', 'Thali'].map(tag => (
+                      <button 
+                        key={tag}
+                        onClick={() => setSearchQuery(tag)}
+                        className="px-3 py-1.5 bg-slate-50 rounded-lg text-xs font-bold text-slate-600 hover:bg-primary/10 hover:text-primary transition-all"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex items-center gap-2 md:gap-4">
-        <button 
-          onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-          className="p-2 md:hidden hover:bg-slate-100 rounded-full transition-colors"
-        >
-          <Search size={22} className="text-slate-700" />
-        </button>
-        <button 
-          onClick={() => navigateTo('listing')}
-          className="hidden lg:flex items-center gap-2 text-slate-600 hover:text-primary transition-all font-bold text-sm bg-amber-400/10 px-4 py-2 rounded-full border border-amber-400/20 group"
-        >
-          <Zap size={16} fill="currentColor" className="text-amber-500 group-hover:scale-125 transition-transform" />
-          QuickBite One
-        </button>
-        <button 
-          className="p-2 hover:bg-slate-100 rounded-full transition-colors relative"
-          onClick={() => setIsCartOpen(true)}
-        >
-          <ShoppingBag size={24} className="text-slate-700" />
-          {cartCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
-              {cartCount}
-            </span>
-          )}
-        </button>
-        <button 
-          className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-full font-medium hover:bg-slate-800 transition-all"
-          onClick={() => setCurrentPage('auth')}
-        >
-          <User size={18} />
-          <span className="hidden sm:inline">Sign In</span>
-        </button>
-      </div>
-
-      {/* Mobile Search Overlay */}
-      <AnimatePresence>
-        {isMobileSearchOpen && (
-          <motion.div 
-            initial={{ y: -100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -100, opacity: 0 }}
-            className="absolute top-full left-0 right-0 bg-white border-b border-slate-100 p-4 md:hidden z-[60] shadow-xl"
+        <div className="flex items-center gap-2 md:gap-4">
+          <button 
+            onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+            className="p-2 md:hidden hover:bg-slate-100 rounded-full transition-colors"
           >
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                autoFocus
-                type="text" 
-                placeholder="Search for food..." 
-                className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pl-10 pr-4 focus:outline-none"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    setIsMobileSearchOpen(false);
-                    navigateTo('listing');
-                  }
-                }}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </nav>
-  );
+            <Search size={22} className="text-slate-700" />
+          </button>
+          <button 
+            onClick={() => navigateTo('orders')}
+            className="hidden md:flex items-center gap-2 text-slate-600 hover:text-primary transition-all font-bold text-sm px-4 py-2 rounded-full hover:bg-slate-50"
+          >
+            <Clock size={18} />
+            Orders
+          </button>
+          <button 
+            onClick={() => navigateTo('listing')}
+            className="hidden lg:flex items-center gap-2 text-slate-600 hover:text-primary transition-all font-bold text-sm bg-amber-400/10 px-4 py-2 rounded-full border border-amber-400/20 group"
+          >
+            <Zap size={16} fill="currentColor" className="text-amber-500 group-hover:scale-125 transition-transform" />
+            QuickBite One
+          </button>
+          <button 
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors relative"
+            onClick={() => setIsCartOpen(true)}
+          >
+            <ShoppingBag size={24} className="text-slate-700" />
+            {cartCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
+                {cartCount}
+              </span>
+            )}
+          </button>
+          <button 
+            className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-full font-medium hover:bg-slate-800 transition-all"
+            onClick={() => setCurrentPage('auth')}
+          >
+            <User size={18} />
+            <span className="hidden sm:inline">Sign In</span>
+          </button>
+        </div>
+
+        {/* Mobile Search Overlay */}
+        <AnimatePresence>
+          {isMobileSearchOpen && (
+            <motion.div 
+              initial={{ y: -100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -100, opacity: 0 }}
+              className="absolute top-full left-0 right-0 bg-white border-b border-slate-100 p-4 md:hidden z-[60] shadow-xl"
+            >
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  autoFocus
+                  type="text" 
+                  placeholder="Search for food..." 
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pl-10 pr-4 focus:outline-none"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setIsMobileSearchOpen(false);
+                      navigateTo('listing');
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Mobile Suggestions */}
+              {suggestions.length > 0 && (
+                <div className="mt-4 space-y-2 max-h-[300px] overflow-y-auto">
+                  {suggestions.map((suggestion, idx) => (
+                    <button 
+                      key={idx}
+                      onClick={() => handleSuggestionClick(suggestion)}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-all border border-transparent hover:border-slate-100"
+                    >
+                      <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                        {suggestion.type === 'restaurant' ? <ShoppingBag size={18} /> : <Search size={18} />}
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-slate-900">{suggestion.label}</p>
+                        <p className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">{suggestion.type}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </nav>
+    );
+  };
 
   const CartSidebar = () => (
     <AnimatePresence>
@@ -386,7 +527,7 @@ export default function App() {
               ) : (
                 cart.map(item => (
                   <div key={item.id} className="flex gap-4">
-                    <img src={item.image} alt={item.name} className="w-20 h-20 rounded-xl object-cover" />
+                    <img src={item.image} alt={item.name} className="w-20 h-20 rounded-xl object-cover" referrerPolicy="no-referrer" />
                     <div className="flex-1">
                       <h4 className="font-bold">{item.name}</h4>
                       <p className="text-slate-500 text-sm">₹{item.price}</p>
@@ -458,6 +599,7 @@ export default function App() {
             src="https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=2000&auto=format&fit=crop" 
             alt="Hero Background" 
             className="w-full h-full object-cover brightness-[0.4]"
+            referrerPolicy="no-referrer"
           />
         </div>
         <div className="relative z-10 max-w-4xl space-y-6 md:space-y-8">
@@ -522,7 +664,7 @@ export default function App() {
               onClick={() => setCurrentPage('listing')}
             >
               <div className="w-32 h-32 rounded-full overflow-hidden mb-3 border-4 border-transparent group-hover:border-primary transition-all">
-                <img src={cat.image} alt={cat.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <img src={cat.image} alt={cat.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
               </div>
               <p className="text-center font-bold text-slate-700">{cat.name} {cat.icon}</p>
             </motion.div>
@@ -649,6 +791,7 @@ export default function App() {
                 src="https://images.unsplash.com/photo-1512428559087-560fa5ceab42?q=80&w=600&auto=format&fit=crop" 
                 alt="App Screenshot" 
                 className="rounded-[32px] w-full h-[500px] object-cover"
+                referrerPolicy="no-referrer"
               />
             </div>
             <div className="absolute -left-20 top-1/2 -translate-y-1/2 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
@@ -810,7 +953,7 @@ export default function App() {
             {INSPIRATION_CATEGORIES.map((item) => (
               <div key={item.name} className="flex-shrink-0 text-center cursor-pointer group">
                 <div className="w-24 h-24 md:w-36 md:h-36 rounded-full overflow-hidden mb-3 shadow-md group-hover:shadow-xl transition-all">
-                  <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
                 </div>
                 <p className="text-sm md:text-base font-medium text-slate-700">{item.name}</p>
               </div>
@@ -903,13 +1046,13 @@ export default function App() {
   const DetailView = () => {
     if (!selectedRestaurant) return null;
     const menu = MENU_ITEMS[selectedRestaurant.id] || [];
-    const categories = ['Starters', 'Main Course', 'Desserts'];
+    const categories = ['Starters', 'Main Course', 'Desserts', 'Beverages', 'Snacks'];
 
     return (
       <div className="pb-20">
         {/* Banner */}
         <div className="h-80 relative">
-          <img src={selectedRestaurant.image} className="w-full h-full object-cover" alt={selectedRestaurant.name} />
+          <img src={selectedRestaurant.image} className="w-full h-full object-cover" alt={selectedRestaurant.name} referrerPolicy="no-referrer" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-8 md:px-12 text-white">
             <button 
@@ -1008,7 +1151,7 @@ export default function App() {
                               <p className="text-slate-500 text-sm leading-relaxed">{item.description}</p>
                             </div>
                             <div className="relative w-24 h-24 md:w-32 md:h-32 flex-shrink-0">
-                              <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded-2xl shadow-md" />
+                              <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded-2xl shadow-md" referrerPolicy="no-referrer" />
                               <button 
                                 onClick={() => addToCart(item, selectedRestaurant.id)}
                                 className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white text-primary border border-slate-200 px-4 md:px-6 py-1.5 rounded-lg font-bold text-xs md:text-sm shadow-lg hover:bg-slate-50 transition-all active:scale-95"
@@ -1030,14 +1173,19 @@ export default function App() {
             <div className="space-y-8 max-w-3xl">
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-bold">{selectedRestaurant.name} Reviews</h3>
-                <button className="bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm">Write a Review</button>
+                <button 
+                  onClick={() => setIsReviewModalOpen(true)}
+                  className="bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-primary/90 transition-colors"
+                >
+                  Write a Review
+                </button>
               </div>
               <div className="space-y-6">
-                {(REVIEWS[selectedRestaurant.id] || []).map(review => (
+                {(reviewsState[selectedRestaurant.id] || []).map(review => (
                   <div key={review.id} className="p-6 rounded-3xl border border-slate-100 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <img src={review.userImage} className="w-10 h-10 rounded-full" alt={review.userName} />
+                        <img src={review.userImage} className="w-10 h-10 rounded-full" alt={review.userName} referrerPolicy="no-referrer" />
                         <div>
                           <p className="font-bold">{review.userName}</p>
                           <p className="text-xs text-slate-400">{review.date}</p>
@@ -1176,7 +1324,17 @@ export default function App() {
             <button 
               onClick={() => {
                 setIsLoading(true);
+                const newOrder: Order = {
+                  id: `ORD${Date.now()}`,
+                  restaurantName: selectedRestaurant?.name || 'QuickBite Restaurant',
+                  restaurantImage: selectedRestaurant?.image || '',
+                  items: [...cart],
+                  total: cartTotal + 65,
+                  date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+                  status: 'placed'
+                };
                 setTimeout(() => {
+                  setOrders(prev => [newOrder, ...prev]);
                   setCart([]);
                   setOrderConfirmed(true);
                   setIsLoading(false);
@@ -1237,9 +1395,15 @@ export default function App() {
       <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
         <button 
           onClick={() => navigateTo('home')}
-          className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all"
+          className="flex-1 bg-slate-100 text-slate-900 py-4 rounded-2xl font-bold hover:bg-slate-200 transition-all"
         >
           Back to Home
+        </button>
+        <button 
+          onClick={() => navigateTo('orders')}
+          className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all"
+        >
+          View History
         </button>
         <button 
           onClick={() => navigateTo('tracking')}
@@ -1262,6 +1426,16 @@ export default function App() {
       }, [center, map]);
       return null;
     };
+
+    const statusSteps = [
+      { id: 'placed', label: 'Placed', icon: <CheckCircle2 size={16} /> },
+      { id: 'preparing', label: 'Preparing', icon: <Clock size={16} /> },
+      { id: 'picked-up', label: 'Out for Delivery', icon: <Truck size={16} /> },
+      { id: 'delivered', label: 'Delivered', icon: <MapPin size={16} /> },
+    ];
+
+    const currentStepIndex = statusSteps.findIndex(s => s.id === trackingStatus);
+    const progressPercentage = ((currentStepIndex + 1) / statusSteps.length) * 100;
 
     return (
       <div className="h-[calc(100vh-80px)] relative overflow-hidden">
@@ -1300,70 +1474,98 @@ export default function App() {
         </button>
 
         {/* Tracking Info Overlay */}
-        <div className="absolute bottom-6 left-4 right-4 md:bottom-10 md:left-10 md:right-auto md:w-[400px] z-10 space-y-4">
+        <div className="absolute bottom-6 left-4 right-4 md:bottom-10 md:left-10 md:right-auto md:w-[450px] z-10 space-y-4">
           <motion.div 
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="bg-white rounded-[32px] md:rounded-[40px] shadow-2xl border border-slate-100 p-6 md:p-8 space-y-6"
+            className="bg-white rounded-[32px] md:rounded-[40px] shadow-2xl border border-slate-100 p-6 md:p-8 space-y-8"
           >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Estimated Arrival</p>
-                <h3 className="text-3xl font-black text-slate-900">{Math.ceil(eta)} mins</h3>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-3xl font-black text-slate-900">{Math.ceil(eta)} mins</h3>
+                  <span className="text-slate-400 text-sm font-bold">Arriving by {new Date(Date.now() + eta * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
               </div>
               <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
                 <Clock size={28} />
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
+            {/* Visual Progress Bar */}
+            <div className="space-y-6">
+              <div className="relative">
+                <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-100 -translate-y-1/2 rounded-full" />
+                <motion.div 
+                  className="absolute top-1/2 left-0 h-1 bg-primary -translate-y-1/2 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPercentage}%` }}
+                  transition={{ duration: 0.5 }}
+                />
+                <div className="relative flex justify-between">
+                  {statusSteps.map((step, idx) => {
+                    const isActive = idx <= currentStepIndex;
+                    const isCurrent = idx === currentStepIndex;
+                    return (
+                      <div key={step.id} className="flex flex-col items-center gap-2">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-500 z-10 ${
+                          isActive ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'bg-white text-slate-300 border-2 border-slate-100'
+                        } ${isCurrent ? 'scale-125 ring-4 ring-primary/20' : ''}`}>
+                          {step.icon}
+                        </div>
+                        <span className={`text-[10px] font-bold uppercase tracking-tighter transition-colors duration-500 ${
+                          isActive ? 'text-slate-900' : 'text-slate-300'
+                        }`}>
+                          {step.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl">
+                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm">
                   <Truck className="text-primary" />
                 </div>
                 <div>
                   <p className="font-bold text-slate-900">
-                    {trackingStatus === 'placed' && 'Order Placed'}
-                    {trackingStatus === 'preparing' && 'Preparing your meal'}
-                    {trackingStatus === 'picked-up' && 'Picked up by partner'}
-                    {trackingStatus === 'near-you' && 'Arriving soon'}
-                    {trackingStatus === 'delivered' && 'Delivered'}
+                    {trackingStatus === 'placed' && 'Order Confirmed'}
+                    {trackingStatus === 'preparing' && 'Chef is cooking your meal'}
+                    {trackingStatus === 'picked-up' && 'Out for delivery'}
+                    {trackingStatus === 'near-you' && 'Arriving at your doorstep'}
+                    {trackingStatus === 'delivered' && 'Order Delivered! Enjoy!'}
                   </p>
-                  <p className="text-sm text-slate-500">Your order is on its way</p>
+                  <p className="text-xs text-slate-500">
+                    {trackingStatus === 'placed' && 'We have received your order'}
+                    {trackingStatus === 'preparing' && 'Your food is being prepared with care'}
+                    {trackingStatus === 'picked-up' && 'Our delivery partner is on the way'}
+                    {trackingStatus === 'near-you' && 'The driver is just around the corner'}
+                    {trackingStatus === 'delivered' && 'Hope you enjoy your meal!'}
+                  </p>
                 </div>
-              </div>
-
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <motion.div 
-                  className="h-full bg-primary"
-                  animate={{ 
-                    width: trackingStatus === 'placed' ? '20%' : 
-                           trackingStatus === 'preparing' ? '40%' : 
-                           trackingStatus === 'picked-up' ? '60%' : 
-                           trackingStatus === 'near-you' ? '90%' : '100%' 
-                  }}
-                />
               </div>
             </div>
 
             <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200">
-                  <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=100&auto=format&fit=crop" alt="Driver" className="w-full h-full object-cover" />
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 border-2 border-white shadow-md">
+                  <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=100&auto=format&fit=crop" alt="Driver" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
                 <div>
                   <p className="font-bold text-slate-900">Rahul Kumar</p>
                   <div className="flex items-center gap-1 text-xs text-amber-500 font-bold">
                     <Star size={12} fill="currentColor" />
-                    <span>4.9</span>
+                    <span>4.9 • Delivery Partner</span>
                   </div>
                 </div>
               </div>
               <div className="flex gap-2">
-                <button className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-all">
+                <button className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-600 hover:bg-primary hover:text-white transition-all shadow-sm">
                   <Phone size={20} />
                 </button>
-                <button className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition-all shadow-lg shadow-primary/20">
+                <button className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-600 hover:bg-primary hover:text-white transition-all shadow-sm">
                   <MessageCircle size={20} />
                 </button>
               </div>
@@ -1373,6 +1575,87 @@ export default function App() {
       </div>
     );
   };
+
+  const OrdersView = () => (
+    <div className="max-w-4xl mx-auto px-4 py-12 space-y-10">
+      <div className="flex items-center justify-between">
+        <h2 className="text-4xl font-black text-slate-900 tracking-tight">Order History</h2>
+        <button 
+          onClick={() => navigateTo('home')}
+          className="text-primary font-bold flex items-center gap-2 hover:gap-3 transition-all"
+        >
+          <ArrowLeft size={20} /> Back to Home
+        </button>
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="text-center py-20 space-y-6 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
+          <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto shadow-xl">
+            <ShoppingBag size={40} className="text-slate-300" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-2xl font-bold text-slate-900">No orders yet</h3>
+            <p className="text-slate-500">Looks like you haven't placed any orders yet.</p>
+          </div>
+          <button 
+            onClick={() => navigateTo('home')}
+            className="bg-primary text-white px-8 py-3 rounded-2xl font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-all"
+          >
+            Order Now
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {orders.map(order => (
+            <motion.div 
+              key={order.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-[32px] border border-slate-100 shadow-sm hover:shadow-xl transition-all overflow-hidden group"
+            >
+              <div className="p-6 md:p-8 flex flex-col md:flex-row gap-6 md:items-center">
+                <div className="w-24 h-24 rounded-2xl overflow-hidden flex-shrink-0 shadow-md">
+                  <img src={order.restaurantImage} alt={order.restaurantName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
+                </div>
+                
+                <div className="flex-grow space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xl font-bold text-slate-900">{order.restaurantName}</h4>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{order.date}</span>
+                  </div>
+                  <p className="text-sm text-slate-500 line-clamp-1">
+                    {order.items.map(item => `${item.quantity}x ${item.name}`).join(', ')}
+                  </p>
+                  <div className="flex items-center gap-4 pt-2">
+                    <div className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1">
+                      <CheckCircle2 size={12} />
+                      {order.status.charAt(0).toUpperCase() + order.status.slice(1).replace('-', ' ')}
+                    </div>
+                    <p className="font-bold text-slate-900">₹{order.total}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 md:flex-col">
+                  <button 
+                    onClick={() => {
+                      setSelectedRestaurant(RESTAURANTS.find(r => r.name === order.restaurantName) || RESTAURANTS[0]);
+                      navigateTo('detail');
+                    }}
+                    className="flex-grow md:flex-grow-0 bg-slate-900 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-primary transition-colors"
+                  >
+                    Reorder
+                  </button>
+                  <button className="flex-grow md:flex-grow-0 border border-slate-200 px-6 py-3 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors">
+                    View Details
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   const AuthView = () => (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
@@ -1413,7 +1696,7 @@ export default function App() {
 
         <div className="grid grid-cols-2 gap-4">
           <button className="flex items-center justify-center gap-2 border border-slate-100 py-3 rounded-2xl hover:bg-slate-50 transition-all font-medium">
-            <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" />
+            <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" referrerPolicy="no-referrer" />
             Google
           </button>
           <button className="flex items-center justify-center gap-2 border border-slate-100 py-3 rounded-2xl hover:bg-slate-50 transition-all font-medium">
@@ -1437,6 +1720,79 @@ export default function App() {
       
       <Navbar />
       <CartSidebar />
+      
+      {/* Review Modal */}
+      <AnimatePresence>
+        {isReviewModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsReviewModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-2xl font-bold">Write a Review</h3>
+                  <button 
+                    onClick={() => setIsReviewModalOpen(false)}
+                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Rating</label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          onClick={() => setNewReview(prev => ({ ...prev, rating: star }))}
+                          className="transition-transform active:scale-90"
+                        >
+                          <Star 
+                            size={32} 
+                            className={star <= newReview.rating ? "text-amber-400" : "text-slate-200"}
+                            fill={star <= newReview.rating ? "currentColor" : "none"}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Your Review</label>
+                    <textarea
+                      value={newReview.comment}
+                      onChange={(e) => setNewReview(prev => ({ ...prev, comment: e.target.value }))}
+                      placeholder="Share your experience with this restaurant..."
+                      className="w-full h-32 p-4 rounded-2xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none text-sm"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAddReview}
+                  disabled={!newReview.comment.trim()}
+                  className="w-full py-4 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20"
+                >
+                  Submit Review
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <Toast />
 
       <main className="max-w-7xl mx-auto min-h-[70vh]">
@@ -1455,6 +1811,7 @@ export default function App() {
             {orderConfirmed && currentPage !== 'tracking' && <OrderConfirmedView />}
             {currentPage === 'tracking' && <TrackingView />}
             {currentPage === 'auth' && <AuthView />}
+            {currentPage === 'orders' && <OrdersView />}
           </motion.div>
         </AnimatePresence>
       </main>
